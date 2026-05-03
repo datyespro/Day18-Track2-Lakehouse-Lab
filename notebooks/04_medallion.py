@@ -13,8 +13,7 @@
 # Pre-req: ran `make data` (or `python scripts/generate_data_lite.py`).
 
 # %%
-import sys, os
-sys.path.insert(0, "/workspace/scripts" if os.path.exists("/workspace") else "../scripts")
+import _setup  # noqa: F401  -- adds scripts/ to sys.path
 import polars as pl
 import duckdb
 from deltalake import DeltaTable, write_deltalake
@@ -64,7 +63,13 @@ silver_arrow = duckdb.sql(f"""
 """).arrow()
 
 write_deltalake(SILVER, silver_arrow, mode="overwrite", partition_by=["date"])
-print(f"Silver rows: {DeltaTable(SILVER).to_pyarrow_table().num_rows:,}")
+
+silver_n = DeltaTable(SILVER).to_pyarrow_table().num_rows
+print(f"Silver rows: {silver_n:,}  (Bronze {bronze_n:,} → dedup dropped {bronze_n - silver_n:,})")
+assert silver_n < bronze_n, (
+    "Silver has the same row count as Bronze — dedup did not run. "
+    "Did you regenerate Bronze with the latest generator (which injects retries)?"
+)
 
 # %% [markdown]
 # ## Gold — aggregate to (date, model) metrics
@@ -108,10 +113,26 @@ DeltaTable(GOLD).optimize.z_order(["model"])
 # ## Verify Gold
 
 # %%
-print(pl.from_arrow(DeltaTable(GOLD).to_pyarrow_table()))
+gold_df = pl.from_arrow(DeltaTable(GOLD).to_pyarrow_table())
+print(gold_df)
+
+# Slide-5 deliverable: "Gold p50/p95/cost qua ≥ 7 ngày". Make that explicit.
+n_dates = gold_df.select("date").n_unique()
+n_models = gold_df.select("model").n_unique()
+print(
+    f"\n──── Gold deliverable metrics ────\n"
+    f"  Distinct dates:   {n_dates:>3}   (target ≥ 7)\n"
+    f"  Distinct models:  {n_models:>3}\n"
+    f"  Total Gold rows:  {gold_df.height:>3}   (= dates × models)"
+)
+assert n_dates >= 7, (
+    f"Gold has only {n_dates} dates — slide deliverable requires ≥ 7. "
+    "Re-run `make data` (the generator spreads across 7 UTC days)."
+)
 
 # %% [markdown]
 # ## ✅ Deliverable check
 # - [ ] All three tables exist under `_lakehouse/{bronze,silver,gold}/`
 # - [ ] Silver has fewer rows than Bronze (dedup worked)
-# - [ ] Gold rows = (#dates × #models), populated cost & error_rate
+# - [ ] Gold spans ≥ 7 dates × 3 models (slide §6 medallion contract)
+# - [ ] Cost & error_rate columns populated and non-zero

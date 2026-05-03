@@ -88,6 +88,18 @@ bad_count = (spark.read.format("delta").load(path)
 print(f"Rows with score<0 after restore: {bad_count}  (expected 0)")
 
 # %% [markdown]
+# ## 5. Final history — now includes the RESTORE row
+#
+# (Earlier `DESCRIBE HISTORY` ran *before* the RESTORE, so it would have
+# shown only 4 versions. This second pass is the one to screenshot.)
+
+# %%
+final = spark.sql(f"DESCRIBE HISTORY delta.`{path}`").select("version", "operation").collect()
+for r in final:
+    print(f"  v{r['version']:>2}  {r['operation']}")
+print(f"\nTotal versions: {len(final)}  (target ≥ 5)")
+
+# %% [markdown]
 # ## ✅ Deliverable check
 # - [ ] DESCRIBE HISTORY shows ≥ 5 versions (incl. RESTORE itself)
 # - [ ] MERGE 100K finished in < 60s

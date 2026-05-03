@@ -13,10 +13,9 @@
 # >                   `MERGE INTO ...`           ↔ `dt.merge(source, predicate)`
 
 # %%
-import sys, time, os
-sys.path.insert(0, "/workspace/scripts" if os.path.exists("/workspace") else "../scripts")
+import _setup  # noqa: F401  -- adds scripts/ to sys.path
+import time
 import polars as pl
-import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
 from lakehouse import path, reset
 
@@ -87,22 +86,36 @@ print(f"v1 schema:    {v1_cols}")
 
 # %% [markdown]
 # ## 4. RESTORE bad version (rollback)
+#
+# `restore(2)` rewinds the *current* state of the table to whatever it was
+# at version 2, recorded as a new version (v4). The old versions stay in
+# history — restore is itself a transaction, fully auditable.
 
 # %%
 t0 = time.time()
 dt = DeltaTable(table_path)
-dt.restore(2)  # creates a new version with v2's contents
+dt.restore(2)
 print(f"RESTORE → v2: {time.time()-t0:.2f}s   (target < 30s)")
 
-# Verify the bad rows are gone
-import duckdb
-bad_count = duckdb.sql(
-    f"SELECT count(*) FROM delta_scan('{table_path}') WHERE score < 0"
-).fetchone()[0]
+# Verify the bad rows are gone — use delta-rs's native filter pushdown.
+# (DuckDB's delta extension as of 1.5.x is stricter about post-RESTORE
+# protocol entries than delta-rs writes; routing through delta-rs end-to-end
+# avoids the InvalidProtocolError race.)
+dt_after = DeltaTable(table_path)
+bad_count = dt_after.to_pyarrow_table(filters=[("score", "<", 0)]).num_rows
 print(f"Rows with score<0 after restore: {bad_count}  (expected 0)")
+
+# %% [markdown]
+# ## 5. history() — final audit trail (now includes the RESTORE)
+
+# %%
+final_history = DeltaTable(table_path).history()
+for h in final_history:
+    print(f"  v{h['version']:>2}  {h['operation']:<25}")
+print(f"\nTotal versions: {len(final_history)}  (target ≥ 5)")
 
 # %% [markdown]
 # ## ✅ Deliverable check
 # - [ ] history() shows ≥ 5 versions (incl. RESTORE itself)
-# - [ ] MERGE 100K finished in < 60s (likely < 5s on lightweight path)
+# - [ ] MERGE 100K finished in < 60s (likely < 1s on lightweight path)
 # - [ ] RESTORE finished in < 30s and removed bad rows

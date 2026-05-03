@@ -72,7 +72,14 @@ silver_df = (
 (silver_df.write.format("delta").mode("overwrite")
     .partitionBy("date")
     .save(SILVER))
-print("Silver rows:", spark.read.format("delta").load(SILVER).count())
+
+bronze_n = bronze.count()
+silver_n = spark.read.format("delta").load(SILVER).count()
+print(f"Silver rows: {silver_n:,}  (Bronze {bronze_n:,} → dedup dropped {bronze_n - silver_n:,})")
+assert silver_n < bronze_n, (
+    "Silver has the same row count as Bronze — dedup did not run. "
+    "Did you regenerate Bronze with the updated generator (which seeds retries)?"
+)
 
 # %% [markdown]
 # ## Gold — aggregate to (date, model) metrics

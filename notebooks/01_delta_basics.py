@@ -14,11 +14,9 @@
 # > Same on-disk format, different binding.
 
 # %%
-import sys
-sys.path.insert(0, "/workspace/scripts" if __import__("os").path.exists("/workspace") else "../scripts")
+import _setup  # noqa: F401  -- adds scripts/ to sys.path (file-relative)
 import polars as pl
 from deltalake import DeltaTable, write_deltalake
-from deltalake.exceptions import SchemaMismatchError
 from lakehouse import path, reset
 
 table_path = path("scratch", "users_delta")
@@ -56,9 +54,10 @@ for h in dt.history():
 bad = pl.DataFrame({"id": [4], "name": ["dan"], "age": ["thirty"], "city": ["Hue"]})
 try:
     write_deltalake(table_path, bad.to_arrow(), mode="append")
-    print("UNEXPECTED: bad write succeeded")
-except (SchemaMismatchError, Exception) as e:
-    print(f"BLOCKED by schema enforcement (expected): {type(e).__name__}")
+    print("UNEXPECTED: bad write succeeded — schema enforcement broken")
+except Exception as e:
+    msg = str(e).splitlines()[0][:120]
+    print(f"BLOCKED by schema enforcement (expected): {type(e).__name__}: {msg}")
 
 # %% [markdown]
 # ## 4. Schema evolution (opt-in)
@@ -69,7 +68,9 @@ new = pl.DataFrame({
 })
 write_deltalake(table_path, new.to_arrow(), mode="append", schema_mode="merge")
 dt = DeltaTable(table_path)
-print(pl.from_arrow(dt.to_pyarrow_table()))
+# Sort by id so the printout is stable across reruns — Delta does not
+# preserve write-order across appends.
+print(pl.from_arrow(dt.to_pyarrow_table()).sort("id"))
 
 # %% [markdown]
 # ## 5. Bonus — query with DuckDB (zero copy)
