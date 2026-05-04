@@ -1,0 +1,3 @@
+{"protocol":{"minReaderVersion":1,"minWriterVersion":2,"readerFeatures":[],"writerFeatures":[]}}
+{"remove":{"path":"part-00001-867ba8fd-1df6-4cd5-971a-83f7b1bf2409-c000.snappy.parquet","dataChange":true,"deletionTimestamp":1777865610555,"extendedFileMetadata":false,"partitionValues":{},"size":1586,"tags":{}}}
+{"commitInfo":{"timestamp":1777865610555,"operation":"RESTORE","operationParameters":{"version":"2"},"operationMetrics":{"numRemovedFile":1,"numRestoredFile":0},"readVersion":3,"clientVersion":"delta-rs.py-0.25.5"}}
